@@ -63,6 +63,10 @@ BASE_URI="https://buildbot.openinfosecfoundation.org/"
 GITHUB_BASE_URI = "https://api.github.com/repos/"
 GITHUB_MASTER_URI = "https://api.github.com/repos/OISF/suricata/commits?sha=master"
 
+DOCKER_PULL = False
+DOCKER_IMAGE = "regit/suri-buildbot"
+DOCKER_IMAGE = "regit/suri-buildbot:v2.0"
+
 if GOT_DOCKER:
     parser = argparse.ArgumentParser(prog='prscript', description='Script checking validity of branch before PR')
 else:
@@ -273,14 +277,16 @@ def CreateContainer():
     print "Pulling docking image, first run should take long"
     if GOT_DOCKERPY_API < 2:
         cli = Client()
-        cli.pull('regit/suri-buildbot')
-        cli.create_container(name='suri-buildbot', image='regit/suri-buildbot', ports=[8010, 22], volumes=['/data/oisf', '/data/buildbot/master/master.cfg'])
+        if DOCKER_PULL:
+            cli.pull(DOCKER_IMAGE)
+        cli.create_container(name='suri-buildbot', image=DOCKER_IMAGE, ports=[8010, 22], volumes=['/data/oisf', '/data/buildbot/master/master.cfg'])
     else:
         cli = DockerClient()
-        cli.images.pull('regit/suri-buildbot')
+        if DOCKER_PULL:
+            cli.images.pull(DOCKER_IMAGE)
         suri_src_dir = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
         print "Using base src dir: " + suri_src_dir
-        cli.containers.create('regit/suri-buildbot', name='suri-buildbot', ports={'8010/tcp': 8010, '22/tcp': None} , volumes={suri_src_dir: { 'bind': '/data/oisf', 'mode': 'ro'}, os.path.join(suri_src_dir,'qa','docker','buildbot.cfg'): { 'bind': '/data/buildbot/master/master.cfg', 'mode': 'ro'}}, detach = True)
+        cli.containers.create(DOCKER_IMAGE, name='suri-buildbot', ports={'8010/tcp': 8010, '22/tcp': None} , volumes={suri_src_dir: { 'bind': '/data/oisf', 'mode': 'ro'}, os.path.join(suri_src_dir,'qa','docker','buildbot.cfg'): { 'bind': '/data/buildbot/master/master.cfg', 'mode': 'ro'}}, detach = True)
     sys.exit(0)
 
 def StartContainer():
@@ -311,13 +317,13 @@ def RmContainer():
         except:
             print "Unable to remove suri-buildbot container"
         try:
-            cli.remove_image('regit/suri-buildbot:latest')
+            cli.remove_image(DOCKER_IMAGE)
         except:
             print "Unable to remove suri-buildbot images"
     else:
         cli = DockerClient()
         cli.containers.get('suri-buildbot').remove()
-        cli.images.remove('regit/suri-buildbot:latest')
+        cli.images.remove(DOCKER_IMAGE)
     sys.exit(0)
 
 if GOT_DOCKER:
