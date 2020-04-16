@@ -84,6 +84,7 @@ docker_deps = ""
 if not GOT_DOCKER:
     docker_deps = " (disabled)"
 parser.add_argument('-d', '--docker', action='store_const', const=True, help='use docker based testing', default=False)
+parser.add_argument('-i', '--image', help='Local docker image to use' + docker_deps, default=None)
 parser.add_argument('-C', '--create', action='store_const', const=True, help='create docker container' + docker_deps, default=False)
 parser.add_argument('-s', '--start', action='store_const', const=True, help='start docker container' + docker_deps, default=False)
 parser.add_argument('-S', '--stop', action='store_const', const=True, help='stop docker container' + docker_deps, default=False)
@@ -270,19 +271,29 @@ if not args.local:
             print("Branch " + args.branch + " is not in sync with OISF's master branch. Rebase needed.")
             sys.exit(-1)
 
-def CreateContainer():
+def CreateContainer(image=None):
     # FIXME check if existing
-    print("Pulling docking image, first run should take long")
+    
     if GOT_DOCKERPY_API < 2:
         cli = Client()
-        cli.pull('regit/suri-buildbot')
-        cli.create_container(name='suri-buildbot', image='regit/suri-buildbot', ports=[8010, 22], volumes=['/data/oisf', '/data/buildbot/master/master.cfg'])
+        if image is None:
+            print("Pulling docking image, first run should take long")
+            image = 'regit/suri-buildbot'
+            cli.pull(image)
+        else:
+            print("Using local docker image " + image + ", first run should take long")
+        cli.create_container(name='suri-buildbot', image=image, ports=[8010, 22], volumes=['/data/oisf', '/data/buildbot/master/master.cfg'])
     else:
         cli = DockerClient()
-        cli.images.pull('regit/suri-buildbot')
+        if image is None:
+            print("Pulling docking image, first run should take long")
+            image = 'regit/suri-buildbot'
+            cli.images.pull(image)
+        else:
+            print("Using local docker image " + image + ", first run should take long")
         suri_src_dir = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
         print("Using base src dir: " + suri_src_dir)
-        cli.containers.create('regit/suri-buildbot', name='suri-buildbot', ports={'8010/tcp': 8010, '22/tcp': None} , volumes={suri_src_dir: { 'bind': '/data/oisf', 'mode': 'ro'}, os.path.join(suri_src_dir,'qa','docker','buildbot.cfg'): { 'bind': '/data/buildbot/master/master.cfg', 'mode': 'ro'}}, detach = True, cap_add=["SYS_PTRACE"])
+        cli.containers.create(image, name='suri-buildbot', ports={'8010/tcp': 8010, '22/tcp': None} , volumes={suri_src_dir: { 'bind': '/data/oisf', 'mode': 'ro'}, os.path.join(suri_src_dir,'qa','docker','buildbot.cfg'): { 'bind': '/data/buildbot/master/master.cfg', 'mode': 'ro'}}, detach = True, cap_add=["SYS_PTRACE"])
     sys.exit(0)
 
 def StartContainer():
@@ -305,7 +316,7 @@ def StopContainer():
         cli.containers.get('suri-buildbot').stop()
     sys.exit(0)
 
-def RmContainer():
+def RmContainer(image=None):
     if GOT_DOCKERPY_API < 2:
         cli = Client()
         try:
@@ -314,25 +325,27 @@ def RmContainer():
             print("Unable to remove suri-buildbot container")
             pass
         try:
-            cli.remove_image('regit/suri-buildbot:latest')
+            if image is None:
+                cli.remove_image('regit/suri-buildbot:latest')
         except:
             print("Unable to remove suri-buildbot images")
             pass
     else:
         cli = DockerClient()
         cli.containers.get('suri-buildbot').remove()
-        cli.images.remove('regit/suri-buildbot:latest')
+        if image is None:
+            cli.images.remove('regit/suri-buildbot:latest')
     sys.exit(0)
 
 if GOT_DOCKER:
     if args.create:
-        CreateContainer()
+        CreateContainer(args.image)
     if args.start:
         StartContainer()
     if args.stop:
         StopContainer()
     if args.rm:
-        RmContainer()
+        RmContainer(args.image)
 
 if not args.branch:
     print("You need to specify a branch for this mode")
